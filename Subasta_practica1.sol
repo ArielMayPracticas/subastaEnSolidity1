@@ -3,35 +3,35 @@
 pragma solidity >=0.8.2 <0.9.0;
 
 contract SubastaBasica {
-    // 📌 Variables de estado
+    // Variables de estado
     address public subastador;         // Dirección del que crea la subasta
-	uint public ofertaBase;            // Monto mínimo aceptado
+    uint public ofertaBase;            // Monto mínimo aceptado
     uint public ofertaMaxima;          // Oferta más alta actual
     address public mejorPostor;        // Dirección del mejor postor
     bool public finalizada;            // Estado de la subasta
 
-	uint public inicio;
-    uint public fin;
+    uint public inicio;  // momento de inicio al deployar
+    uint public fin;     // momento de finalizacion
     uint constant EXTENSION_TIEMPO = 10 minutes; // Tiempo extra si hay oferta en últimos 10 min
 
     mapping(address => uint) public devoluciones; // Para permitir retiros a postores superados
 
-    // 🧾 Eventos
+    // Eventos
     event NuevaOferta(address indexed postor, uint cantidad);
     event SubastaFinalizada(address ganador, uint cantidad);
 
     constructor(uint _duracionSegundos) {
-        subastador = msg.sender;
+        subastador = msg.sender;                       // Guarda direccion del subastador al deployar
         inicio = block.timestamp;                      // Comienza al desplegar
         fin = block.timestamp + _duracionSegundos;     // Finaliza luego del tiempo indicado
     }
 
-    // 🏗️ Constructor: se ejecuta al desplegar el contrato
+    // Constructor: se ejecuta al desplegar el contrato
     constructor() {
         subastador = msg.sender;  // El creador del contrato es el subastador
     }
 
-    // 💸 Función para hacer ofertas
+    // Función para hacer ofertas verificando actividad de subasta y valor anterior ofertado
     function ofertar() external payable {
         require(!finalizada, "Subasta finalizada");
         require(msg.value > ofertaMaxima, "La oferta debe ser mayor a la actual");
@@ -47,7 +47,7 @@ contract SubastaBasica {
         emit NuevaOferta(msg.sender, msg.value);
     }
 
-    // 🔁 Permitir a postores superados retirar su dinero
+    // Permitir a postores superados retirar su dinero
     function retirar() external {
         uint monto = devoluciones[msg.sender];
         require(monto > 0, "No hay nada para retirar");
@@ -56,7 +56,7 @@ contract SubastaBasica {
         payable(msg.sender).transfer(monto);
     }
 
-    // ⛔ Finalizar la subasta y enviar los fondos al subastador
+    // Finalizar la subasta y enviar los fondos al subastador
     function finalizarSubasta() external {
         require(msg.sender == subastador, "Solo el subastador puede finalizar");
         require(!finalizada, "La subasta ya se ha finalizado");
