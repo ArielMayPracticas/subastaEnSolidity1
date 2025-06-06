@@ -13,18 +13,26 @@ contract SubastaBasica {
     uint public inicio;  // momento de inicio al deployar
     uint public fin;     // momento de finalizacion
     uint constant EXTENSION_TIEMPO = 10 minutes; // Tiempo extra si hay oferta en últimos 10 min
+    uint constant INCREMENTO_MINIMO_PORCENTUAL = 5;
+    uint constant FEE_PORCENTUAL = 2;
+
+    uint public acumuladoPorSubastador; // Monto total acumulado de comisiones
 
     mapping(address => uint) public devoluciones; // Para permitir retiros a postores superados
 
     // Eventos
-    event NuevaOferta(address indexed postor, uint cantidad);
-    event SubastaFinalizada(address ganador, uint cantidad);
+    event NuevaOferta(address indexed postor, uint cantidad, uint nuevoFin);
+    event SubastaFinalizada(address ganador, uint cantidad, uint totalComisiones);
+    event RetiroConFee(address indexed postor, uint devuelto, uint feeCobrado);
+
 
     constructor(uint _duracionSegundos) {
         subastador = msg.sender;                       // Guarda direccion del subastador al deployar
+        ofertaBase = 2 ether;                          // Precio inicial de la subasta
         inicio = block.timestamp;                      // Comienza al desplegar
-        fin = block.timestamp + _duracionSegundos;     // Finaliza luego del tiempo indicado
+        fin = block.timestamp + 2 days;                // Finaliza luego del tiempo indicado
     }
+
 
     // Constructor: se ejecuta al desplegar el contrato
     constructor() {
@@ -32,9 +40,18 @@ contract SubastaBasica {
     }
 
     // Función para hacer ofertas verificando actividad de subasta y valor anterior ofertado
-    function ofertar() external payable {
-        require(!finalizada, "Subasta finalizada");
-        require(msg.value > ofertaMaxima, "La oferta debe ser mayor a la actual");
+
+function ofertar() external payable {
+        require(block.timestamp >= inicio, "La subasta aun no comienza");
+        require(block.timestamp <= fin, "La subasta ha finalizado");
+        require(!finalizada, "La subasta ya fue finalizada");
+
+        if (ofertaMaxima == 0) {
+            require(msg.value >= ofertaBase, "La oferta es menor al minimo base (2 ETH)");
+        } else {
+            uint incrementoMinimo = (ofertaMaxima * (100 + INCREMENTO_MINIMO_PORCENTUAL)) / 100;
+            require(msg.value >= incrementoMinimo, "Debe superar la oferta actual en al menos 5%");
+        }
 
         // Guardar para retiro la oferta anterior
         if (ofertaMaxima > 0) {
@@ -44,7 +61,11 @@ contract SubastaBasica {
         mejorPostor = msg.sender;
         ofertaMaxima = msg.value;
 
-        emit NuevaOferta(msg.sender, msg.value);
+        if (fin - block.timestamp <= 10 minutes) {
+            fin = block.timestamp + EXTENSION_TIEMPO;
+        }
+
+        emit NuevaOferta(msg.sender, msg.value, fin);
     }
 
     // Permitir a postores superados retirar su dinero
@@ -56,14 +77,23 @@ contract SubastaBasica {
         payable(msg.sender).transfer(monto);
     }
 
-    // Finalizar la subasta y enviar los fondos al subastador
-    function finalizarSubasta() external {
-        require(msg.sender == subastador, "Solo el subastador puede finalizar");
-        require(!finalizada, "La subasta ya se ha finalizado");
+   function finalizarSubasta() external {
+        require(block.timestamp >= fin, "La subasta aun no ha terminado");
+        require(!finalizada, "La subasta ya fue finalizada");
 
         finalizada = true;
-        payable(subastador).transfer(ofertaMaxima);
 
-        emit SubastaFinalizada(mejorPostor, ofertaMaxima);
+        // Transferir oferta ganadora al subastador
+        if (ofertaMaxima > 0) {
+            payable(subastador).transfer(ofertaMaxima);
+        }
+
+        // Transferir fees acumulados
+        if (acumuladoPorSubastador > 0) {
+            payable(subastador).transfer(acumuladoPorSubastador);
+            acumuladoPorSubastador = 0;
+        }
+
+        emit SubastaFinalizada(mejorPostor, ofertaMaxima, acumuladoPorSubastador);
     }
 }
