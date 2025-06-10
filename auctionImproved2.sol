@@ -72,4 +72,53 @@ contract TimedAuction {
         emit BidPlaced(msg.sender, msg.value, block.timestamp);
 
         if (endTime - block.timestamp <= EXTENSION_THRESHOLD) {
-            endTime += EXTENSION_TI_
+            endTime += EXTENSION_TIME;
+        }
+    }
+
+    function finalize() external onlyOwner nonReentrant {
+        require(block.timestamp >= endTime, "Active");
+        require(!finalized, "Done");
+
+        finalized = true;
+
+        (bool sentOwner, ) = payable(owner).call{value: highestBid}("");
+        require(sentOwner, "SendFail");
+        emit Finalized(highestBidder, highestBid, block.timestamp);
+
+        for (uint i = 0; i < bidders.length; i++) {
+            address bidder = bidders[i].bidder;
+
+            if (bidder != highestBidder && !refunded[bidder]) {
+                uint amount = userBids[bidder];
+                if (amount > 0) {
+                    uint refund = amount - (amount * REFUND_FEE_PERCENT / 100);
+                    refunded[bidder] = true;
+
+                    (bool sent, ) = payable(bidder).call{value: refund}("");
+                    if (sent) {
+                        emit Refunded(bidder, refund);
+                    }
+                }
+            }
+        }
+    }
+
+    function getBiddersCount() external view returns (uint) {
+        return bidders.length;
+    }
+
+    function getBidder(uint index) external view returns (address, uint, uint) {
+        require(index < bidders.length, "OOR"); // Out of range
+        Bidder memory b = bidders[index];
+        return (b.bidder, b.amount, b.timestamp);
+    }
+
+    receive() external payable {
+        revert("bid()");
+    }
+
+    fallback() external payable {
+        revert("bid()");
+    }
+}
